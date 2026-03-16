@@ -63,7 +63,7 @@ def call_ollama_analysis(assembly: str, model: str, base_url: str) -> str:
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Use r2pipe + Ollama to analyze binary assembly.")
-    parser.add_argument("--ip", default="http://172.20.80.1:11434", help="Ollama base URL (默认已指定)")
+    parser.add_argument("--ip", default="http://172.26.100.1:11434", help="Ollama base URL (默认已指定)")
     parser.add_argument("--model", default="qwen2.5-coder:7b", help="Ollama 模型名 (默认已指定)")
     parser.add_argument("--file" , default="pwn" , help="要分析的ELF文件")
     parser.add_argument("--func" , default="main" , help="要提取汇编的函数名，比如 sym.main")

@@ -1,3 +1,4 @@
+import argparse
 import os
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
@@ -9,36 +10,46 @@ from langchain_classic.agents import AgentExecutor, create_structured_chat_agent
 RED = "\033[31m"
 RESET = "\033[0m"
 
-from pwn_func import llm_checksec, enumerate_functions, decompile_function, find_useful_strings
+from pwn_func import llm_checksec, enumerate_functions, decompile_function, find_useful_strings, llm_ROPgadget , check_seccomp
 
 # 转换
 checksec_security_tools = tool(llm_checksec)
 enumerate_functions_tool = tool(enumerate_functions)
 decompile_function_tool = tool(decompile_function)
 find_useful_strings_tool = tool(find_useful_strings)
+ropgadget_tool = tool(llm_ROPgadget)
+check_seccomp_tool = tool(check_seccomp)
 
 tools = [
     checksec_security_tools,
     enumerate_functions_tool,
     decompile_function_tool,
-    find_useful_strings_tool
+    find_useful_strings_tool,
+    ropgadget_tool,
+    check_seccomp_tool
 ]
 
 def main():
+    parser = argparse.ArgumentParser(description="自动化二进制漏洞分析 Agent")
+    parser.add_argument("--file", type=str, default="overflow", help="要分析的二进制文件路径")
+    parser.add_argument("--ip", default="http://172.26.96.1:11434", help="Ollama 服务地址")
+    parser.add_argument("--model", default="qwen2.5-coder:14b", help="Ollama 模型名称")
+    args = parser.parse_args()
+
     # 获取二进制文件位置
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    binary_path = os.path.join(script_dir, "overflow")
+    binary_path = os.path.join(script_dir, args.file)
     if not os.path.exists(binary_path):
         print(f"{RED}二进制文件不存在: {binary_path}{RESET}")
         return
     
-    print(f"{RED}[*] 正在唤醒Qwen2.5并加载工具 ~~~~ {RESET}")
+    print(f"{RED}[*] 正在唤醒大模型并加载工具 ~~~~ {RESET}")
     
     # 初始化本地模型
     llm = ChatOllama(
-        model="qwen2.5-coder:7b", 
-        base_url="http://172.20.80.1:11434", 
+        model=args.model, 
+        base_url=args.ip, 
         temperature=0.1
     )
 
@@ -65,12 +76,16 @@ def main():
                 }}
             }}
             ```
-            
+             
+            【重要安全利用规则】
+            1. 如果你在函数列表中看到了诸如 set_secommp、prctl 或 sandbox 相关的函数，你必须调用 check_seccomp 工具。
+            2. 如果发现 seccomp 禁用了 execve 系统调用，绝对不允许使用 system('/bin/sh') 这种利用方式！你必须明确提出构造 ORW (Open, Read, Write) ROP 链来读取 flag。
+                    
             当你通过一系列工具调用，收集完所有信息并得出最终漏洞利用策略时，使用以下格式输出最终报告：
             ```json
             {{
                 "action": "Final Answer",
-                "action_input": "你的最终漏洞分析报告与完整 Pwn 利用思路(用中文回答)"
+                "action_input": "你的最终漏洞分析报告与完整 Pwn 利用思路(用中文回答),如果可以的话尝试给出exp"
             }}
             ```
             """),

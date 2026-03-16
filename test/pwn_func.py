@@ -109,3 +109,56 @@ def find_useful_strings(binary_path: str) -> str:
         return f"{RED}字符串查找失败: {str(e)}{RESET}"
     
 # ROPgadget寻找工具
+
+def llm_ROPgadget(binary_path: str) -> str:
+    """
+    寻找二进制文件中的ROP gadget
+    当你需要构造ROP链进行利用时，调用此工具寻找一些常用的gadget(如pop rdi; ret等)，以便后续构造利用链
+    该工具会返回一些常见寄存器操作的gadget地址，帮助你快速找到利用所需的gadget
+    """
+
+    cmd = ["ROPgadget", "--binary", binary_path, "--only", "pop|ret"]
+
+    try:
+        result = subprocess.run(cmd , capture_output=True , text=True , check=True)
+        gadgets = result.stdout.strip()
+        return f"[ROP Gadget列表]\n{gadgets}" if gadgets else "[+] 未找到明显有用的ROP gadget"
+    except subprocess.CalledProcessError as e:
+        return f"{RED}ROP gadget 寻找失败: {str(e)}{RESET}" 
+
+# 检测沙箱
+def check_seccomp(binary_path: str, stdin_payload: str = "\n") -> str:
+    """
+    检查二进制文件是否开启了 seccomp 沙箱以及具体的过滤规则。
+    如果程序存在 read/scanf/gets 等阻塞等待输入的逻辑，它可能会导致本工具超时。
+    此时，你可以通过 `stdin_payload` 参数传入特定的字符串（比如 "\\n"、"1\\n" 或大量的 "A"），尝试让程序跑过输入阻塞点，触发沙箱加载机制。
+    """
+    cmd = ["seccomp-tools", "dump", binary_path]
+
+    try:
+        # 将大模型传进来的 payload (例如包含换行符的字符串) 转为字节流，通过 input 参数喂给子进程
+        # 处理大模型可能传入的转义字符，如 "\\n" -> "\n"
+        actual_payload = stdin_payload.encode('utf-8').decode('unicode_escape').encode('utf-8')
+        
+        result = subprocess.run(
+            cmd, 
+            input=actual_payload, 
+            capture_output=True, 
+            timeout=5
+        )
+        
+        output = result.stdout.decode('utf-8', errors='ignore').strip()
+        
+        if output:
+            return f"[Seccomp 规则详细解析]\n{output}"
+        else:
+            return "[-] 程序正常结束或崩溃，但未检测到 Seccomp 规则的加载。"
+            
+    except subprocess.TimeoutExpired:
+        return (
+            f"{RED}[-] seccomp-tools 执行超时。程序卡在了某个输入等待点。{RESET}\n"
+            f"【系统提示】：你刚才尝试发送的 stdin_payload 是 '{stdin_payload}'，但它没能让程序执行到沙箱加载点（如 prctl 调用处）。\n"
+            "请重新查看 `main` 函数的汇编逻辑，弄清楚程序到底需要什么样的输入才能跳出循环或分支，然后重新调用本工具并传入正确的 `stdin_payload`！"
+        )
+    except Exception as e:
+        return f"{RED}Seccomp 检查失败: {str(e)}{RESET}"
